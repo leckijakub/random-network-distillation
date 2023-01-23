@@ -18,3 +18,13 @@ python run_atari.py --gamma_ext 0.999
 To use more than one gpu/machine, use MPI (e.g. `mpiexec -n 8 python run_atari.py --num_env 128 --gamma_ext 0.999` should use 1024 parallel environments to collect experience on an 8 gpu machine). 
 
 ### [Blog post and videos](https://blog.openai.com/reinforcement-learning-with-prediction-based-rewards/)
+
+###
+```
+docker run --gpus all -v $(pwd)/models:/root/random-network-distillation/models -v $(pwd)/logs:/root/random-network-distillation/logs -it leckijakub/s175494_guzw-gpu python3.6 run_atari.py --num_env 8 --gamma_ext 0.999
+```
+
+```
+python3.6 replayer.py --kind movie
+```
+

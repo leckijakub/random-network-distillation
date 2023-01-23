@@ -12,9 +12,10 @@ from policies.cnn_policy_param_matched import CnnPolicy
 from ppo_agent import PpoAgent
 from utils import set_global_seeds
 from vec_env import VecFrameStack
+from atari_wrappers import make_atari
 
 
-def train(*, env_id, num_env, hps, num_timesteps, seed):
+def train(*, env_id, num_env, hps, num_timesteps, seed, save_freq=100, retrain, test, render):
     venv = VecFrameStack(
         make_atari_env(env_id, num_env, seed, wrapper_kwargs=dict(),
                        start_index=num_env * MPI.COMM_WORLD.Get_rank(),
@@ -63,19 +64,24 @@ def train(*, env_id, num_env, hps, num_timesteps, seed):
         update_ob_stats_every_step=hps.pop('update_ob_stats_every_step'),
         int_coeff=hps.pop('int_coeff'),
         ext_coeff=hps.pop('ext_coeff'),
+        retrain=retrain,
+        test=test,
+        ifrender=render,
     )
     agent.start_interaction([venv])
-    if hps.pop('update_ob_stats_from_random_agent'):
+    if hps.pop('update_ob_stats_from_random_agent') and not test:
         agent.collect_random_statistics(num_timesteps=128*50)
     assert len(hps) == 0, "Unused hyperparameters: %s" % list(hps.keys())
 
     counter = 0
     while True:
-        info = agent.step()
+        info = agent.step(agent.I.stats['n_updates'] % save_freq == 0 and agent.I.stats['n_updates'] > 0)
         if info['update']:
             logger.logkvs(info['update'])
             logger.dumpkvs()
-            counter += 1
+        counter += 1
+        if agent.I.stats['n_updates'] % save_freq == 0 and agent.I.stats['n_updates'] > 0 and not test:
+            agent.save_model(agent.I.stats['n_updates'])
         if agent.I.stats['tcount'] > num_timesteps:
             break
 
@@ -106,10 +112,15 @@ def main():
     parser.add_argument('--int_coeff', type=float, default=1.)
     parser.add_argument('--ext_coeff', type=float, default=2.)
     parser.add_argument('--dynamics_bonus', type=int, default=0)
+    parser.add_argument("--save_freq", type=int, default=100)
+    parser.add_argument("--retrain", type=bool, default=True)
+    parser.add_argument("--test", type=bool, default=False)
+    parser.add_argument("--render", type=bool, default=False)
 
 
     args = parser.parse_args()
-    logger.configure(dir=logger.get_dir(), format_strs=['stdout', 'log', 'csv'] if MPI.COMM_WORLD.Get_rank() == 0 else [])
+    logger.configure(dir=os.getcwd() + "/logs", format_strs=['stdout', 'log', 'csv'] if MPI.COMM_WORLD.Get_rank() == 0 else [])
+    print(f"########## LOGGER DIR: {logger.get_dir()}")
     if MPI.COMM_WORLD.Get_rank() == 0:
         with open(os.path.join(logger.get_dir(), 'experiment_tag.txt'), 'w') as f:
             f.write(args.tag)
@@ -142,8 +153,10 @@ def main():
     )
 
     tf_util.make_session(make_default=True)
+    print("retrain:{}, test:{}, render:{}".format(args.retrain, args.test, args.render))
+
     train(env_id=args.env, num_env=args.num_env, seed=seed,
-        num_timesteps=args.num_timesteps, hps=hps)
+            num_timesteps=args.num_timesteps, hps=hps, save_freq=args.save_freq, retrain=args.retrain, test=args.test, render=args.render)
 
 
 if __name__ == '__main__':

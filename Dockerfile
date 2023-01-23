@@ -84,5 +84,11 @@ RUN wget http://www.atarimania.com/roms/Roms.rar
 RUN unrar x -o+ ./Roms.rar
 RUN python3.6 -m atari_py.import_roms ./ROMS
 
+RUN python3.6 -m pip install matplotlib ipdb
+RUN apt-get install -y ffmpeg
+
 COPY . ./random-network-distillation
 WORKDIR ./random-network-distillation
+
+
+CMD [ "python3.6", "run_atari.py", "--num_env", "8", "--gamma_ext", "0.999" ]
